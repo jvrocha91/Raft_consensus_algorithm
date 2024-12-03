@@ -1,8 +1,7 @@
-import queue
 import threading
 import random
 import time
-from queue import Queue
+import queue
 
 class Node:
     def __init__(self, node_id, network):
@@ -14,6 +13,8 @@ class Node:
         self.log = []
         self.commit_index = -1
         self.vote_count = 0
+        self.heartbeat_timeout = random.uniform(5, 10)  # Timeout aleatório
+        self.last_heartbeat = time.time()
         self.running = True
 
     def run(self):
@@ -27,8 +28,12 @@ class Node:
             time.sleep(1)
 
     def follower(self):
+        if time.time() - self.last_heartbeat > self.heartbeat_timeout:
+            print(f"Node {self.node_id} did not receive heartbeat, becoming candidate.")
+            self.state = "candidate"
+            return
         print(f"Node {self.node_id} is a follower.")
-        self.wait_for_messages(timeout=5)
+        self.wait_for_messages(timeout=1)
 
     def candidate(self):
         print(f"Node {self.node_id} is running for leader (term {self.term}).")
@@ -40,7 +45,15 @@ class Node:
             "term": self.term,
             "candidate_id": self.node_id
         })
-        self.wait_for_messages(timeout=5)
+        start_time = time.time()
+        while time.time() - start_time < self.heartbeat_timeout:
+            try:
+                message = self.network.receive_message(self.node_id)
+                self.handle_message(message)
+                if self.state == "leader":
+                    return
+            except queue.Empty:
+                continue
 
     def leader(self):
         print(f"Node {self.node_id} is the leader.")
@@ -91,6 +104,7 @@ class Node:
         if message["term"] >= self.term:
             self.term = message["term"]
             self.state = "follower"
+            self.last_heartbeat = time.time()
             print(f"Node {self.node_id} received a heartbeat from Node {message['leader_id']}.")
 
 class Network:
@@ -100,7 +114,7 @@ class Network:
 
     def add_node(self, node):
         self.nodes[node.node_id] = node
-        self.queues[node.node_id] = Queue()
+        self.queues[node.node_id] = queue.Queue()
 
     def send_message(self, target_id, message):
         self.queues[target_id].put(message)
@@ -124,7 +138,7 @@ def simulate():
     for thread in threads:
         thread.start()
 
-    time.sleep(20)  # Run the simulation for 20 seconds
+    time.sleep(30)  # Run the simulation for 30 seconds
 
     for node in nodes:
         node.running = False
@@ -134,3 +148,4 @@ def simulate():
 
 if __name__ == "__main__":
     simulate()
+
