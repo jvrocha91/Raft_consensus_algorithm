@@ -21,7 +21,7 @@ Funcionalidades principais:
 
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/seu-usuario/sistema-distribuido.git
+   git clone https://github.com/jvrocha91/Raft_consensus_algorithm.git
    
 2. Navegue até o diretório do projeto:
    cd sistema-distribuido
