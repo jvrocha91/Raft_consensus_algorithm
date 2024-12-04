@@ -3,6 +3,7 @@ import random
 import time
 import queue
 
+
 class Node:
     def __init__(self, node_id, network):
         self.node_id = node_id
@@ -16,9 +17,21 @@ class Node:
         self.heartbeat_timeout = random.uniform(5, 10)  # Timeout aleatório
         self.last_heartbeat = time.time()
         self.running = True
+        self.active = True  # Indica se o nó está ativo ou falho
 
     def run(self):
         while self.running:
+            if not self.active:
+                print(f"Node {self.node_id} is inactive (failed).")
+                time.sleep(5)  # Tempo de falha
+                self.recover()
+                continue
+
+            # Chance de falhar (1 em 10)
+            if random.randint(1, 10) == 1:
+                self.fail()
+                continue
+
             if self.state == "follower":
                 self.follower()
             elif self.state == "candidate":
@@ -27,10 +40,27 @@ class Node:
                 self.leader()
             time.sleep(1)
 
+    def fail(self):
+        """Simula a falha do nó."""
+        self.active = False
+        if self.state == "leader":
+            self.network.remove_leader()
+        self.state = "follower"
+        self.vote_count = 0
+        print(f"Node {self.node_id} has failed.")
+
+    def recover(self):
+        """Recupera o nó."""
+        self.active = True
+        self.last_heartbeat = time.time()
+        print(f"Node {self.node_id} has recovered.")
+
     def follower(self):
         if time.time() - self.last_heartbeat > self.heartbeat_timeout:
             print(f"Node {self.node_id} did not receive heartbeat, becoming candidate.")
-            self.state = "candidate"
+            if not self.network.leader_exists():
+                self.state = "candidate"
+                self.vote_count = 0
             return
         print(f"Node {self.node_id} is a follower.")
         self.wait_for_messages(timeout=1)
@@ -39,7 +69,7 @@ class Node:
         print(f"Node {self.node_id} is running for leader (term {self.term}).")
         self.term += 1
         self.voted_for = self.node_id
-        self.vote_count = 1
+        self.vote_count = 1  # Voto no próprio nó
         self.network.broadcast_message({
             "type": "RequestVote",
             "term": self.term,
@@ -55,9 +85,14 @@ class Node:
             except queue.Empty:
                 continue
 
+        # Timeout sem maioria, retorna a seguidor
+        print(f"Node {self.node_id} did not win the election, returning to follower state.")
+        self.state = "follower"
+
     def leader(self):
         print(f"Node {self.node_id} is the leader.")
-        while self.state == "leader" and self.running:
+        self.network.set_leader(self.node_id)
+        while self.state == "leader" and self.running and self.active:
             self.network.broadcast_message({
                 "type": "Heartbeat",
                 "term": self.term,
@@ -98,6 +133,7 @@ class Node:
             self.vote_count += 1
             print(f"Node {self.node_id} received a vote (total: {self.vote_count}).")
             if self.vote_count > len(self.network.nodes) // 2:
+                print(f"Node {self.node_id} has won the election and is now the leader.")
                 self.state = "leader"
 
     def handle_heartbeat(self, message):
@@ -107,10 +143,12 @@ class Node:
             self.last_heartbeat = time.time()
             print(f"Node {self.node_id} received a heartbeat from Node {message['leader_id']}.")
 
+
 class Network:
     def __init__(self):
         self.nodes = {}
         self.queues = {}
+        self.current_leader = None
 
     def add_node(self, node):
         self.nodes[node.node_id] = node
@@ -126,6 +164,18 @@ class Network:
     def receive_message(self, node_id):
         return self.queues[node_id].get(timeout=1)
 
+    def set_leader(self, leader_id):
+        self.current_leader = leader_id
+        print(f"Leader is now Node {leader_id}.")
+
+    def remove_leader(self):
+        print(f"Leader Node {self.current_leader} is no longer active.")
+        self.current_leader = None
+
+    def leader_exists(self):
+        return self.current_leader is not None and self.nodes[self.current_leader].active
+
+
 def simulate():
     network = Network()
     nodes = [Node(i, network) for i in range(5)]
@@ -138,7 +188,8 @@ def simulate():
     for thread in threads:
         thread.start()
 
-    time.sleep(30)  # Run the simulation for 30 seconds
+    # Simulação por 60 segundos
+    time.sleep(60)
 
     for node in nodes:
         node.running = False
@@ -146,6 +197,6 @@ def simulate():
     for thread in threads:
         thread.join()
 
+
 if __name__ == "__main__":
     simulate()
-
