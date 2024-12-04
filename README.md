@@ -1,4 +1,4 @@
-# Algoritmo de Eleição em Sistemas Distribuídos
+# Algoritmo Raft em Sistemas Distribuídos
 
 ## Descrição do Projeto
 
